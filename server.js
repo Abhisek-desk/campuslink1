@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1260,6 +1261,67 @@ app.get('/api/students/:id/readiness/', (req, res) => {
         return res.status(404).json({ error: 'Student not found' });
     const readiness = calculateStudentReadiness(student);
     res.json(readiness);
+});
+// ---------- AI Readiness (Groq) ----------
+async function askGroqJson(prompt) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+            model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+            temperature: 0.4,
+            response_format: { type: 'json_object' },
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a campus placement coach. Reply ONLY with valid JSON matching the requested schema. Be specific, concise and encouraging.',
+                },
+                { role: 'user', content: prompt },
+            ],
+        }),
+    });
+    if (!res.ok)
+        throw new Error(`Groq error ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return JSON.parse(data.choices?.[0]?.message?.content ?? '{}');
+}
+function fallbackAIReadiness(readiness) {
+    return {
+        summary: readiness.recommendation,
+        strengths: readiness.positiveFactors,
+        gaps: readiness.improvementAreas,
+        action_plan: readiness.improvementAreas.slice(0, 4).map((a, i) => ({
+            step: a,
+            timeframe: i < 2 ? 'Next 2 weeks' : 'Next 4 weeks',
+        })),
+        interview_tips: ['Revise core fundamentals for your top skills', 'Practice explaining your projects in 2 minutes'],
+    };
+}
+app.post('/api/students/:id/ai-readiness/', async (req, res) => {
+    const student = students.find((s) => s.id === req.params.id);
+    if (!student)
+        return res.status(404).json({ error: 'Student not found' });
+    const readiness = calculateStudentReadiness(student);
+    if (!process.env.GROQ_API_KEY) {
+        return res.json({ ...fallbackAIReadiness(readiness), source: 'rule-based', note: 'GROQ_API_KEY not set' });
+    }
+    const prompt = `Evaluate this student's placement readiness.
+Student: ${student.name}, ${student.branch}, graduating ${student.graduation_year}, CGPA ${student.cgpa}, backlogs ${student.backlog_count}.
+Skills (proficiency/100): ${student.skills.map((s) => `${s.name} ${s.proficiency}`).join(', ')}.
+Projects: ${(student.projects || []).map((p) => `${p.title} [${(p.technologies || []).join(', ')}]`).join('; ') || 'none'}.
+Computed readiness score: ${readiness.score}/100 (${readiness.status}). Breakdown: ${JSON.stringify(readiness.breakdown)}.
+Return JSON: {"summary": string (2-3 sentences), "strengths": string[3], "gaps": string[3], "action_plan": [{"step": string, "timeframe": string}] (4 items), "interview_tips": string[3]}`;
+    try {
+        const ai = await askGroqJson(prompt);
+        res.json({ ...ai, source: 'groq' });
+    }
+    catch (err) {
+        console.error(err);
+        res.json({ ...fallbackAIReadiness(readiness), source: 'rule-based', note: 'Groq unavailable, showing rule-based insights' });
+    }
 });
 app.get('/api/students/:id/skill-gaps/', (req, res) => {
     const student = students.find((s) => s.id === req.params.id);

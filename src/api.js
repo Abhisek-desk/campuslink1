@@ -28,6 +28,9 @@ export const api = {
     getStudentById: async (id) => {
         return fetchJson(`/api/students/${id}/`);
     },
+    getAIReadiness: async (id) => {
+        return fetchJson(`/api/students/${id}/ai-readiness/`, { method: 'POST' });
+    },
     getStudentReadiness: async (id) => {
         return fetchJson(`/api/students/${id}/readiness/`);
     },

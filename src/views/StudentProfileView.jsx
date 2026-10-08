@@ -1,6 +1,23 @@
-import React from 'react';
-import { Award, CheckCircle, AlertTriangle, Lightbulb, Briefcase, Sparkles, ArrowLeft, } from 'lucide-react';
+import React, { useState } from 'react';
+import { api } from '../api';
+import { Loader2, Award, CheckCircle, AlertTriangle, Lightbulb, Briefcase, Sparkles, ArrowLeft, } from 'lucide-react';
 export const StudentProfileView = ({ student, readiness, onBack, onNavigateSkillGap, onNavigateMatching, }) => {
+    const [ai, setAi] = useState(null);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState('');
+    const generateAI = async () => {
+        setAiLoading(true);
+        setAiError('');
+        try {
+            setAi(await api.getAIReadiness(student.id));
+        }
+        catch (e) {
+            setAiError('Could not generate AI insights. Please try again.');
+        }
+        finally {
+            setAiLoading(false);
+        }
+    };
     // Circular progress calculation
     const radius = 54;
     const circumference = 2 * Math.PI * radius;
@@ -198,6 +215,47 @@ export const StudentProfileView = ({ student, readiness, onBack, onNavigateSkill
             </p>
           </div>
         </div>
+      </div>
+
+      {/* AI Readiness Insights (Groq) */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-600"/>
+            <h2 className="text-base font-bold text-slate-900">AI Readiness Insights</h2>
+          </div>
+          <button onClick={generateAI} disabled={aiLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2">
+            {aiLoading && <Loader2 className="w-4 h-4 animate-spin"/>}
+            <span>{ai ? 'Regenerate' : 'Generate AI Insights'}</span>
+          </button>
+        </div>
+        {aiError && <p className="text-xs text-rose-600 font-medium">{aiError}</p>}
+        {!ai && !aiLoading && !aiError && (<p className="text-xs text-slate-500">Get a personalised readiness summary, action plan and interview tips.</p>)}
+        {ai && (<div className="space-y-4">
+            <p className="text-sm text-slate-800 leading-relaxed">{ai.summary}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-emerald-50/50 rounded-xl p-3 border border-emerald-100 space-y-1.5">
+                <div className="text-xs font-bold text-emerald-800 uppercase">Strengths</div>
+                {(ai.strengths || []).map((t, i) => (<div key={i} className="text-xs text-emerald-950">✓ {t}</div>))}
+              </div>
+              <div className="bg-amber-50/50 rounded-xl p-3 border border-amber-100 space-y-1.5">
+                <div className="text-xs font-bold text-amber-800 uppercase">Gaps</div>
+                {(ai.gaps || []).map((t, i) => (<div key={i} className="text-xs text-amber-950">⚠ {t}</div>))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700 uppercase">Action Plan</div>
+              {(ai.action_plan || []).map((p, i) => (<div key={i} className="flex items-start justify-between gap-3 text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                  <span className="text-slate-800">{i + 1}. {p.step}</span>
+                  <span className="text-indigo-700 font-semibold whitespace-nowrap">{p.timeframe}</span>
+                </div>))}
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-slate-700 uppercase">Interview Tips</div>
+              {(ai.interview_tips || []).map((t, i) => (<div key={i} className="text-xs text-slate-700">• {t}</div>))}
+            </div>
+            <div className="text-[10px] text-slate-400">Source: {ai.source === 'groq' ? 'Groq AI' : 'Rule-based engine'}{ai.note ? ` (${ai.note})` : ''}</div>
+          </div>)}
       </div>
 
       {/* Row 2: Academic Info & Assessment Scores */}

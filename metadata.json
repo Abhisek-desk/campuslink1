@@ -1,0 +1,6 @@
+{
+  "name": "CAMPUSLINK - Placement Management & Analytics",
+  "description": "AI-Powered Campus-to-Corporate Placement Management & Analytics Platform prototype featuring student readiness scoring, skill gap analysis, explainable recruiter matching, conflict-aware drive scheduling, offer tracking, and placement command analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -821,21 +821,27 @@ let notifications = [
 // 1. AI Readiness Calculation
 function calculateStudentReadiness(student) {
     // Academic (20%): CGPA out of 10, penalized by backlogs
-    const academicScore = Math.max(0, Math.min(100, (student.cgpa / 10) * 100 - student.backlog_count * 15));
+    const academicScore = Math.max(0, Math.min(100, (student.cgpa / 10) * 100 - (student.backlog_count || 0) * 15));
+    
     // Technical Skills (25%): average of top skills
-    const avgTechProficiency = student.skills.length > 0
-        ? student.skills.reduce((acc, s) => acc + s.proficiency, 0) / student.skills.length
-        : 50;
-    // Projects (15%): count and depth
-    const projectScore = Math.min(100, student.projects.length * 35);
-    // Certifications (10%):
-    const certScore = Math.min(100, student.certifications.length * 35);
-    // Aptitude (10%):
-    const aptitudeScore = student.assessment.aptitude;
-    // Mock Interview (10%):
-    const interviewScore = student.assessment.interview;
-    // Communication (10%):
-    const communicationScore = student.assessment.communication;
+    const skillsList = Array.isArray(student.skills) && student.skills.length > 0 ? student.skills : [];
+    const avgTechProficiency = skillsList.length > 0
+        ? skillsList.reduce((acc, s) => acc + (s.proficiency || 70), 0) / skillsList.length
+        : 65;
+    
+    // Projects (15%): scale based on portfolio depth (1 = 70%, 2 = 85%, 3+ = 100%)
+    const projectCount = Array.isArray(student.projects) ? student.projects.length : 0;
+    const projectScore = projectCount === 0 ? 45 : Math.min(100, 55 + projectCount * 22);
+
+    // Certifications (10%): (1 = 70%, 2 = 85%, 3+ = 100%)
+    const certCount = Array.isArray(student.certifications) ? student.certifications.length : 0;
+    const certScore = certCount === 0 ? 45 : Math.min(100, 55 + certCount * 22);
+
+    // Assessment telemetry (30% total): Aptitude (10%), Mock Interview (10%), Communication (10%)
+    const aptitudeScore = student.assessment?.aptitude || 78;
+    const interviewScore = student.assessment?.interview || 72;
+    const communicationScore = student.assessment?.communication || 75;
+
     const weightedTotal = academicScore * 0.2 +
         avgTechProficiency * 0.25 +
         projectScore * 0.15 +
@@ -843,7 +849,8 @@ function calculateStudentReadiness(student) {
         aptitudeScore * 0.1 +
         interviewScore * 0.1 +
         communicationScore * 0.1;
-    const finalScore = Math.round(weightedTotal);
+
+    const finalScore = Math.max(25, Math.min(99, Math.round(weightedTotal)));
     let status = 'NOT READY';
     if (finalScore >= 80)
         status = 'HIGHLY EMPLOYABLE';
@@ -853,6 +860,7 @@ function calculateStudentReadiness(student) {
         status = 'DEVELOPING';
     else
         status = 'NOT READY';
+
     // Explainability breakdown factors
     const positiveFactors = [];
     const improvementAreas = [];
@@ -1203,23 +1211,93 @@ function detectDriveConflicts() {
 // ==========================================
 // REST API ENDPOINTS
 // ==========================================
-// Auth Login
-app.post('/api/login/', (req, res) => {
-    const { email, role } = req.body;
-    if (role === 'admin' || email === 'admin@campuslink.com') {
+
+// Seeded Users Store
+let users = [
+    {
+        id: 'u-admin',
+        name: 'Dr. Suresh Verma',
+        email: 'admin@campuslink.com',
+        password: 'password123',
+        role: 'Placement Officer',
+        avatar: 'SV',
+        department: 'Training & Placement Cell',
+    },
+    {
+        id: 's1',
+        name: 'Aarav Sharma',
+        email: 'student@campuslink.com',
+        password: 'password123',
+        role: 'Student',
+        student_id: 'CS2022-041',
+        branch: 'CSE',
+        avatar: 'AS',
+    },
+    {
+        id: 'u-recruiter-1',
+        name: 'Priya Sundaram',
+        email: 'recruiter@campuslink.com',
+        password: 'password123',
+        role: 'Corporate Recruiter',
+        avatar: 'PS',
+        company_name: 'TechNova Solutions',
+    },
+];
+
+// Auth: Available Demo Users
+app.get('/api/auth/users/', (req, res) => {
+    res.json(users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, avatar: u.avatar, company_name: u.company_name })));
+});
+
+// Auth: Login Endpoint
+app.post(['/api/auth/login/', '/api/login/'], (req, res) => {
+    const { email, password, role } = req.body;
+
+    // Fast-path role switcher or admin login
+    if (role === 'admin' || (email && email.toLowerCase() === 'admin@campuslink.com')) {
+        const adminUser = users.find(u => u.role === 'Placement Officer') || users[0];
         return res.json({
-            user: {
-                id: 'u-admin',
-                name: 'Dr. Suresh Verma',
-                email: 'admin@campuslink.com',
-                role: 'Placement Officer',
-                avatar: 'SV',
-            },
+            user: adminUser,
             token: 'demo-admin-jwt-token',
         });
     }
-    // Student default
-    const student = students.find((s) => s.email === email) || students[0];
+
+    if (role === 'recruiter' || (email && email.toLowerCase() === 'recruiter@campuslink.com')) {
+        const recUser = users.find(u => u.role === 'Corporate Recruiter') || users[2];
+        return res.json({
+            user: recUser,
+            token: 'demo-recruiter-jwt-token',
+        });
+    }
+
+    // Try finding by email in users list
+    let matchedUser = users.find(u => u.email.toLowerCase() === (email || '').toLowerCase());
+    
+    // Check in students list if not found
+    if (!matchedUser && email) {
+        const studentMatch = students.find(s => s.email.toLowerCase() === email.toLowerCase());
+        if (studentMatch) {
+            matchedUser = {
+                id: studentMatch.id,
+                name: studentMatch.name,
+                email: studentMatch.email,
+                role: 'Student',
+                student_id: studentMatch.student_id,
+                branch: studentMatch.branch,
+                avatar: studentMatch.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+            };
+        }
+    }
+
+    if (matchedUser) {
+        return res.json({
+            user: matchedUser,
+            token: `token-${matchedUser.id}`,
+        });
+    }
+
+    // Default to Aarav Sharma if role is student or demo fallback
+    const student = students[0];
     return res.json({
         user: {
             id: student.id,
@@ -1228,11 +1306,85 @@ app.post('/api/login/', (req, res) => {
             role: 'Student',
             student_id: student.student_id,
             branch: student.branch,
-            avatar: student.name.split(' ').map((n) => n[0]).join(''),
+            avatar: 'AS',
         },
         token: 'demo-student-jwt-token',
     });
 });
+
+// Auth: Sign Up Endpoint
+app.post('/api/auth/signup/', (req, res) => {
+    const { name, email, password, role, branch, student_id, cgpa, graduation_year, company_name } = req.body;
+    
+    if (!name || !email) {
+        return res.status(400).json({ error: 'Name and email are required.' });
+    }
+
+    const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (existingUser) {
+        return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
+    }
+
+    const avatar = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U';
+    const userRole = role === 'admin' ? 'Placement Officer' : role === 'recruiter' ? 'Corporate Recruiter' : 'Student';
+    
+    let createdUserId = `u-${Date.now()}`;
+
+    // If student, create a full student profile in the database
+    if (userRole === 'Student') {
+        const newStudentId = `s${students.length + 1}`;
+        createdUserId = newStudentId;
+
+        const newStudent = {
+            id: newStudentId,
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            student_id: student_id || `CS2022-${Math.floor(100 + Math.random() * 900)}`,
+            branch: branch || 'CSE',
+            graduation_year: Number(graduation_year) || 2026,
+            cgpa: Number(cgpa) || 8.0,
+            backlog_count: 0,
+            skills: [
+                { name: 'Python', proficiency: 80 },
+                { name: 'SQL', proficiency: 75 },
+                { name: 'Git', proficiency: 70 },
+                { name: 'Problem Solving', proficiency: 75 },
+            ],
+            projects: [
+                {
+                    title: 'Academic Capstone Project',
+                    description: 'Full-stack software application built with modern engineering workflows.',
+                    technologies: ['Python', 'SQL', 'Git'],
+                },
+            ],
+            certifications: ['Certified Student Developer'],
+            assessment: { aptitude: 78, technical: 80, interview: 70, communication: 75 },
+            shortlistedDrives: [],
+        };
+        students.push(newStudent);
+    }
+
+    const newUser = {
+        id: createdUserId,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password: password || 'demo123',
+        role: userRole,
+        avatar,
+        student_id: userRole === 'Student' ? (student_id || createdUserId) : undefined,
+        branch: userRole === 'Student' ? (branch || 'CSE') : undefined,
+        company_name: userRole === 'Corporate Recruiter' ? (company_name || 'Partner Org') : undefined,
+    };
+
+    users.push(newUser);
+
+    res.status(201).json({
+        user: newUser,
+        token: `token-${newUser.id}`,
+        message: 'Account successfully registered!',
+    });
+});
+
 // Students List & Details
 app.get('/api/students/', (req, res) => {
     const data = students.map((s) => {
@@ -1245,6 +1397,144 @@ app.get('/api/students/', (req, res) => {
     });
     res.json(data);
 });
+
+// Create or Upsert Student Profile
+app.post('/api/students/', (req, res) => {
+    const body = req.body;
+    let index = -1;
+    if (body.id) index = students.findIndex((s) => s.id === body.id);
+    if (index === -1 && body.email) {
+        index = students.findIndex((s) => s.email.toLowerCase() === body.email.toLowerCase());
+    }
+
+    if (index !== -1) {
+        const existing = students[index];
+        const updated = { ...existing, ...body, id: existing.id };
+        if (body.cgpa !== undefined) updated.cgpa = Number(body.cgpa);
+        if (body.backlog_count !== undefined) updated.backlog_count = Number(body.backlog_count);
+        if (body.graduation_year !== undefined) updated.graduation_year = Number(body.graduation_year);
+        const readiness = calculateStudentReadiness(updated);
+        updated.readiness_score = readiness.score;
+        updated.readiness_status = readiness.status;
+        students[index] = updated;
+
+        // Sync with users store
+        const uIdx = users.findIndex(u => u.id === updated.id || u.email.toLowerCase() === updated.email.toLowerCase());
+        if (uIdx !== -1) {
+            users[uIdx].name = updated.name;
+            users[uIdx].email = updated.email;
+            users[uIdx].branch = updated.branch;
+            users[uIdx].student_id = updated.student_id;
+        }
+
+        return res.json({ ...updated, readiness, readiness_score: readiness.score, readiness_status: readiness.status });
+    }
+
+    const newId = body.id || `s${students.length + 1}`;
+    const newStudent = {
+        id: newId,
+        name: body.name || 'New Candidate',
+        email: (body.email || `candidate-${Date.now()}@campuslink.com`).toLowerCase(),
+        student_id: body.student_id || `CS2022-${Math.floor(100 + Math.random() * 900)}`,
+        branch: body.branch || 'CSE',
+        graduation_year: Number(body.graduation_year) || 2026,
+        cgpa: Number(body.cgpa) || 8.0,
+        backlog_count: Number(body.backlog_count) || 0,
+        skills: Array.isArray(body.skills) && body.skills.length > 0 ? body.skills : [
+            { name: 'Python', proficiency: 80 },
+            { name: 'SQL', proficiency: 75 }
+        ],
+        projects: Array.isArray(body.projects) ? body.projects : [],
+        certifications: Array.isArray(body.certifications) ? body.certifications : [],
+        assessment: body.assessment || { aptitude: 75, technical: 80, interview: 70, communication: 75 },
+        shortlistedDrives: body.shortlistedDrives || [],
+    };
+
+    const readiness = calculateStudentReadiness(newStudent);
+    newStudent.readiness_score = readiness.score;
+    newStudent.readiness_status = readiness.status;
+    students.push(newStudent);
+
+    res.status(201).json({ ...newStudent, readiness, readiness_score: readiness.score, readiness_status: readiness.status });
+});
+
+// Update Student Profile
+app.put(['/api/students/:id/', '/api/students/'], (req, res) => {
+    const targetId = req.params.id || req.body.id;
+    let index = -1;
+    if (targetId) {
+        index = students.findIndex((s) => s.id === targetId);
+    }
+    if (index === -1 && req.body.email) {
+        index = students.findIndex((s) => s.email.toLowerCase() === req.body.email.toLowerCase());
+    }
+
+    if (index === -1) {
+        // Fallback: create student if not found
+        const newId = targetId || `s${students.length + 1}`;
+        const created = {
+            id: newId,
+            name: req.body.name || 'Student Candidate',
+            email: (req.body.email || 'student@campuslink.com').toLowerCase(),
+            student_id: req.body.student_id || `CS2022-${Math.floor(100 + Math.random() * 900)}`,
+            branch: req.body.branch || 'CSE',
+            graduation_year: Number(req.body.graduation_year) || 2026,
+            cgpa: Number(req.body.cgpa) || 8.0,
+            backlog_count: Number(req.body.backlog_count) || 0,
+            skills: Array.isArray(req.body.skills) ? req.body.skills : [],
+            projects: Array.isArray(req.body.projects) ? req.body.projects : [],
+            certifications: Array.isArray(req.body.certifications) ? req.body.certifications : [],
+            assessment: req.body.assessment || { aptitude: 75, technical: 80, interview: 70, communication: 75 },
+            shortlistedDrives: [],
+        };
+        const readiness = calculateStudentReadiness(created);
+        created.readiness_score = readiness.score;
+        created.readiness_status = readiness.status;
+        students.push(created);
+        return res.status(201).json({
+            ...created,
+            readiness,
+            readiness_score: readiness.score,
+            readiness_status: readiness.status,
+            message: 'Student profile created!',
+        });
+    }
+
+    const existing = students[index];
+    const updated = {
+        ...existing,
+        ...req.body,
+        id: existing.id,
+    };
+
+    if (req.body.cgpa !== undefined) updated.cgpa = Number(req.body.cgpa);
+    if (req.body.backlog_count !== undefined) updated.backlog_count = Number(req.body.backlog_count);
+    if (req.body.graduation_year !== undefined) updated.graduation_year = Number(req.body.graduation_year);
+
+    const readiness = calculateStudentReadiness(updated);
+    updated.readiness_score = readiness.score;
+    updated.readiness_status = readiness.status;
+    students[index] = updated;
+
+    // Sync with users store
+    const uIdx = users.findIndex(u => u.id === updated.id || u.email.toLowerCase() === updated.email.toLowerCase());
+    if (uIdx !== -1) {
+        users[uIdx].name = updated.name;
+        users[uIdx].email = updated.email;
+        users[uIdx].branch = updated.branch;
+        users[uIdx].student_id = updated.student_id;
+    }
+
+    res.json({
+        ...updated,
+        readiness,
+        readiness_score: readiness.score,
+        readiness_status: readiness.status,
+        message: 'Student profile updated successfully!',
+    });
+});
+
+
 app.get('/api/students/:id/', (req, res) => {
     const student = students.find((s) => s.id === req.params.id);
     if (!student)
@@ -1255,6 +1545,7 @@ app.get('/api/students/:id/', (req, res) => {
         readiness,
     });
 });
+
 app.get('/api/students/:id/readiness/', (req, res) => {
     const student = students.find((s) => s.id === req.params.id);
     if (!student)
@@ -1262,32 +1553,53 @@ app.get('/api/students/:id/readiness/', (req, res) => {
     const readiness = calculateStudentReadiness(student);
     res.json(readiness);
 });
-// ---------- AI Readiness (Groq) ----------
+
+// ---------- AI Engine (Groq with Multiple Fallbacks) ----------
 async function askGroqJson(prompt) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-            model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-            temperature: 0.4,
-            response_format: { type: 'json_object' },
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a campus placement coach. Reply ONLY with valid JSON matching the requested schema. Be specific, concise and encouraging.',
+    const modelsToTry = [
+        process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+        'openai/gpt-oss-20b',
+        'qwen/qwen3.8-27b',
+    ];
+    let lastError = null;
+
+    for (const model of modelsToTry) {
+        try {
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
                 },
-                { role: 'user', content: prompt },
-            ],
-        }),
-    });
-    if (!res.ok)
-        throw new Error(`Groq error ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    return JSON.parse(data.choices?.[0]?.message?.content ?? '{}');
+                body: JSON.stringify({
+                    model,
+                    temperature: 0.3,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a campus placement and resume parsing AI engine. Reply ONLY with valid JSON matching the requested schema. Be precise, accurate, and concise.',
+                        },
+                        { role: 'user', content: prompt },
+                    ],
+                }),
+            });
+
+            if (!res.ok) {
+                lastError = new Error(`Groq ${model} error ${res.status}: ${await res.text()}`);
+                continue;
+            }
+
+            const data = await res.json();
+            const raw = data.choices?.[0]?.message?.content ?? '{}';
+            return JSON.parse(raw);
+        } catch (err) {
+            lastError = err;
+        }
+    }
+    throw lastError || new Error('All Groq models failed');
 }
+
 function fallbackAIReadiness(readiness) {
     return {
         summary: readiness.recommendation,
@@ -1300,6 +1612,214 @@ function fallbackAIReadiness(readiness) {
         interview_tips: ['Revise core fundamentals for your top skills', 'Practice explaining your projects in 2 minutes'],
     };
 }
+
+// Fallback Resume Parser using rule-based NLP extraction
+function fallbackParseResume(text) {
+    const raw = text || '';
+    const emailMatch = raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const email = emailMatch ? emailMatch[0] : 'student@campuslink.com';
+
+    let name = 'Aditi Rao';
+    const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+    const nameLine = lines.find((l) => /^name[:\s]/i.test(l));
+    if (nameLine) {
+        name = nameLine.replace(/^name[:\s]+/i, '').trim();
+    } else if (lines.length > 0 && lines[0].length < 35 && !/resume|cv|curriculum|profile/i.test(lines[0])) {
+        name = lines[0];
+    }
+
+    let cgpa = 8.3;
+    const cgpaMatch = raw.match(/(?:cgpa|gpa|pointer|percentage)[\s:=]*(\d(?:\.\d+)?)/i);
+    if (cgpaMatch) {
+        cgpa = parseFloat(cgpaMatch[1]);
+        if (cgpa > 10) cgpa = parseFloat((cgpa / 10).toFixed(1));
+    }
+
+    let branch = 'CSE';
+    if (/data\s*science|ai\s*&\s*ds/i.test(raw)) branch = 'AIDS';
+    else if (/information\s*technology|\bit\b/i.test(raw)) branch = 'IT';
+    else if (/electronics|ece/i.test(raw)) branch = 'ECE';
+    else if (/mechanical/i.test(raw)) branch = 'MECH';
+    else if (/civil/i.test(raw)) branch = 'CIVIL';
+    else if (/computer\s*science|cse/i.test(raw)) branch = 'CSE';
+
+    const rollMatch = raw.match(/(?:roll|id|student\s*id|reg(?:istration)?\s*no)[\s:=]*([a-zA-Z0-9-]+)/i);
+    const student_id = rollMatch ? rollMatch[1].toUpperCase() : `${branch}2022-${Math.floor(100 + Math.random() * 900)}`;
+
+    const techCatalog = [
+        'Python', 'Java', 'C++', 'JavaScript', 'TypeScript', 'React', 'Node.js', 'Django',
+        'FastAPI', 'Spring Boot', 'SQL', 'PostgreSQL', 'MongoDB', 'AWS', 'Docker',
+        'Kubernetes', 'Git', 'Linux', 'Machine Learning', 'TensorFlow', 'PyTorch',
+        'Power BI', 'Tableau', 'Excel', 'Pandas', 'HTML', 'CSS', 'Tailwind',
+        'Next.js', 'Express', 'Redis', 'GraphQL', 'Android', 'Flutter'
+    ];
+    
+    const detectedSkills = [];
+    techCatalog.forEach((skill) => {
+        const regex = new RegExp(`\\b${skill.replace('+', '\\+')}\\b`, 'i');
+        if (regex.test(raw)) {
+            const proficiency = 72 + Math.floor(Math.random() * 20);
+            detectedSkills.push({ name: skill, proficiency });
+        }
+    });
+
+    if (detectedSkills.length === 0) {
+        detectedSkills.push(
+            { name: 'Python', proficiency: 85 },
+            { name: 'SQL', proficiency: 80 },
+            { name: 'React', proficiency: 75 },
+            { name: 'Git', proficiency: 70 }
+        );
+    }
+
+    const projects = [
+        {
+            title: 'Campus Placement & Analytics Engine',
+            description: 'Scalable web application automating candidate readiness, scheduling, and analytics.',
+            technologies: detectedSkills.slice(0, 3).map((s) => s.name),
+        },
+        {
+            title: 'Distributed Data Intelligence Pipeline',
+            description: 'Automated data transformation service with interactive analytics and API integration.',
+            technologies: detectedSkills.slice(1, 4).map((s) => s.name),
+        },
+    ];
+
+    const certs = [];
+    if (/aws|cloud/i.test(raw)) certs.push('AWS Certified Cloud Practitioner');
+    if (/data|analytics/i.test(raw)) certs.push('Google Data Analytics Professional Certificate');
+    if (/meta|backend/i.test(raw)) certs.push('Meta Professional Developer Certificate');
+    if (certs.length === 0) certs.push('HackerRank Problem Solving (Gold)');
+
+    return {
+        name,
+        email,
+        student_id,
+        branch,
+        graduation_year: 2026,
+        cgpa,
+        backlog_count: 0,
+        skills: detectedSkills,
+        projects,
+        certifications: certs,
+        assessment: {
+            aptitude: Math.min(95, Math.max(68, Math.round(cgpa * 10 - 2))),
+            technical: Math.min(95, Math.max(70, Math.round(detectedSkills[0]?.proficiency || 82))),
+            interview: 72,
+            communication: 78,
+        },
+        summary: `Strong candidate from ${branch} with proven aptitude in ${detectedSkills.slice(0, 3).map((s) => s.name).join(', ')} and a consistent academic record (CGPA ${cgpa}).`,
+        key_strengths: [
+            `Strong grasp of ${detectedSkills[0]?.name || 'core technologies'} (${detectedSkills[0]?.proficiency || 85}% proficiency)`,
+            `Consistent academic performance with CGPA ${cgpa} and zero backlogs`,
+            `Hands-on project experience in ${branch} software development`,
+        ],
+        recommended_focus: 'Practice mock system design interviews and cloud containerization deployment.',
+    };
+}
+
+// POST: AI Parse Resume / Extract Student Details from Text
+app.post('/api/ai/parse-resume/', async (req, res) => {
+    const { resume_text } = req.body;
+    if (!resume_text || resume_text.trim().length === 0) {
+        return res.status(400).json({ error: 'Please provide resume or profile text to analyze.' });
+    }
+
+    if (!process.env.GROQ_API_KEY) {
+        const parsed = fallbackParseResume(resume_text);
+        return res.json({ ...parsed, source: 'rule-based', note: 'GROQ_API_KEY not configured' });
+    }
+
+    const prompt = `You are a placement ATS & resume extraction assistant.
+Extract the student's profile details from the resume/bio text below into a structured JSON object.
+
+RESUME TEXT:
+"""
+${resume_text.slice(0, 4000)}
+"""
+
+REQUIREMENTS:
+- "name": string (full name)
+- "email": string
+- "student_id": string (roll number / student ID if found, else reasonable format like "CS2022-XXX")
+- "branch": string (e.g., "CSE", "IT", "ECE", "MECH", "CIVIL", "AIDS")
+- "graduation_year": number (e.g., 2026)
+- "cgpa": number (out of 10.0, e.g., 8.4)
+- "backlog_count": number (default 0)
+- "skills": array of objects [{"name": string, "proficiency": number from 40 to 95}] (extract 4 to 8 technical skills)
+- "projects": array of objects [{"title": string, "description": string, "technologies": string[]}] (up to 3)
+- "certifications": string[] (up to 3)
+- "assessment": {"aptitude": number (60-95), "technical": number (60-95), "interview": number (60-90), "communication": number (60-95)}
+- "summary": string (2-sentence executive summary)
+- "key_strengths": string[] (3 bullet points)
+- "recommended_focus": string (1 actionable piece of advice)
+
+Return ONLY valid JSON matching this schema.`;
+
+    try {
+        const aiResult = await askGroqJson(prompt);
+        // Validate required keys
+        if (!aiResult.name || !Array.isArray(aiResult.skills)) {
+            throw new Error('AI returned incomplete schema');
+        }
+        res.json({ ...aiResult, source: 'groq' });
+    } catch (err) {
+        console.error('Groq resume parse error, falling back:', err.message);
+        const parsed = fallbackParseResume(resume_text);
+        res.json({ ...parsed, source: 'rule-based-fallback', note: 'AI parsed via fallback NLP parser' });
+    }
+});
+
+// POST: AI Parse Job Description (Recruiter helper)
+app.post('/api/ai/parse-job/', async (req, res) => {
+    const { job_text } = req.body;
+    if (!job_text || job_text.trim().length === 0) {
+        return res.status(400).json({ error: 'Please provide job description text.' });
+    }
+
+    const prompt = `Extract structured job opening details from the following job description.
+
+JOB DESCRIPTION:
+"""
+${job_text.slice(0, 3000)}
+"""
+
+Return JSON with exact structure:
+{
+  "company_name": string,
+  "title": string,
+  "description": string (concise 2-sentence summary),
+  "minimum_cgpa": number (default 7.0 if unstated),
+  "ctc": string (e.g. "₹8.5 LPA"),
+  "vacancies": number (default 10),
+  "required_skills": [{"name": string, "min_proficiency": number (60 to 80)}],
+  "eligible_branches": string[] (e.g. ["CSE", "IT", "ECE"])
+}`;
+
+    try {
+        if (!process.env.GROQ_API_KEY) throw new Error('No Groq key');
+        const aiResult = await askGroqJson(prompt);
+        res.json({ ...aiResult, source: 'groq' });
+    } catch (err) {
+        // Fallback job parser
+        res.json({
+            company_name: 'Campus Partner Co',
+            title: 'Graduate Software Engineer',
+            description: job_text.slice(0, 180),
+            minimum_cgpa: 7.0,
+            ctc: '₹8.0 LPA',
+            vacancies: 10,
+            required_skills: [
+                { name: 'Python', min_proficiency: 70 },
+                { name: 'SQL', min_proficiency: 70 },
+                { name: 'Git', min_proficiency: 65 },
+            ],
+            eligible_branches: ['CSE', 'IT', 'ECE'],
+            source: 'rule-based-fallback',
+        });
+    }
+});
+
 app.post('/api/students/:id/ai-readiness/', async (req, res) => {
     const student = students.find((s) => s.id === req.params.id);
     if (!student)
@@ -1323,6 +1843,7 @@ Return JSON: {"summary": string (2-3 sentences), "strengths": string[3], "gaps":
         res.json({ ...fallbackAIReadiness(readiness), source: 'rule-based', note: 'Groq unavailable, showing rule-based insights' });
     }
 });
+
 app.get('/api/students/:id/skill-gaps/', (req, res) => {
     const student = students.find((s) => s.id === req.params.id);
     if (!student)
@@ -1331,13 +1852,52 @@ app.get('/api/students/:id/skill-gaps/', (req, res) => {
     const gaps = analyzeSkillGaps(student, role);
     res.json(gaps);
 });
-// Jobs List
+
+// Jobs List & Creation
 app.get('/api/jobs/', (req, res) => {
     res.json(jobs);
 });
+
+app.post('/api/jobs/', (req, res) => {
+    const { company_name, title, description, minimum_cgpa, required_skills, ctc, vacancies, deadline } = req.body;
+    const newJob = {
+        id: `j${jobs.length + 1}`,
+        recruiter_id: `r${Date.now()}`,
+        company_name: company_name || 'TechNova Corporate',
+        title: title || 'Graduate Software Trainee',
+        description: description || 'Responsible for software feature development and system quality.',
+        minimum_cgpa: Number(minimum_cgpa) || 7.0,
+        required_skills: Array.isArray(required_skills) && required_skills.length > 0 
+            ? required_skills 
+            : [{ name: 'Problem Solving', min_proficiency: 70 }, { name: 'Python', min_proficiency: 70 }],
+        ctc: ctc || '₹7.5 LPA',
+        deadline: deadline || '2026-11-30',
+        vacancies: Number(vacancies) || 10,
+    };
+    jobs.unshift(newJob);
+
+    // Also register an upcoming placement drive
+    const newDrive = {
+        id: `d${drives.length + 1}`,
+        job_id: newJob.id,
+        company_name: newJob.company_name,
+        date: '2026-11-24',
+        start_time: '10:00',
+        end_time: '12:00',
+        location: 'Campus Placement Lab 1',
+        status: 'UPCOMING',
+        shortlisted_count: 0,
+        registered_count: students.length,
+    };
+    drives.unshift(newDrive);
+
+    res.status(201).json({ job: newJob, drive: newDrive, message: 'Job and Drive created successfully!' });
+});
+
 // Recruiters List
 app.get('/api/recruiters/', (req, res) => {
     res.json(recruiters);
+
 });
 // AI-Assisted Matching
 app.post('/api/matching/run/', (req, res) => {

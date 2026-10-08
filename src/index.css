@@ -1,1 +1,151 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   GLOBAL THEME STYLES (Supports Light & Dark mode seamlessly)
+   ============================================================ */
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #090d16;
+  color: #f1f5f9;
+}
+
+/* Backgrounds in dark mode */
+html.dark .bg-slate-50 {
+  background-color: #090d16 !important;
+}
+
+html.dark .bg-white {
+  background-color: #0f172a !important;
+  color: #f8fafc;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+html.dark .bg-slate-200 {
+  background-color: #334155 !important;
+}
+
+/* Borders in dark mode */
+html.dark .border-slate-200,
+html.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
+
+/* Typography in dark mode */
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* Form Controls in dark mode */
+html.dark input:not([type="range"]),
+html.dark select,
+html.dark textarea {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+/* Accent Badges in dark mode */
+html.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+}
+
+html.dark .border-indigo-200,
+html.dark .border-indigo-100 {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+html.dark .text-indigo-700,
+html.dark .text-indigo-600 {
+  color: #a5b4fc !important;
+}
+
+html.dark .text-indigo-900,
+html.dark .text-indigo-950 {
+  color: #e0e7ff !important;
+}
+
+html.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+html.dark .text-emerald-800,
+html.dark .text-emerald-950,
+html.dark .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+
+html.dark .border-emerald-200,
+html.dark .border-emerald-300,
+html.dark .border-emerald-100 {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+html.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+html.dark .text-amber-800,
+html.dark .text-amber-950 {
+  color: #fde68a !important;
+}
+
+html.dark .border-amber-200,
+html.dark .border-amber-300,
+html.dark .border-amber-100 {
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+html.dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+
+html.dark .text-rose-700,
+html.dark .text-rose-800 {
+  color: #fecdd3 !important;
+}
+
+html.dark .border-rose-200 {
+  border-color: rgba(244, 63, 94, 0.3) !important;
+}
+
+html.dark tr.border-b {
+  border-color: #1e293b !important;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}

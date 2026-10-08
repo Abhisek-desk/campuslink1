@@ -15,10 +15,51 @@ async function fetchJson(url, options) {
 }
 export const api = {
     // Authentication
-    login: async (email, role) => {
-        return fetchJson('/api/login/', {
+    login: async (email, role, password) => {
+        return fetchJson('/api/auth/login/', {
             method: 'POST',
-            body: JSON.stringify({ email, role }),
+            body: JSON.stringify({ email, role, password }),
+        });
+    },
+    signup: async (userData) => {
+        return fetchJson('/api/auth/signup/', {
+            method: 'POST',
+            body: JSON.stringify(userData),
+        });
+    },
+    getUsers: async () => {
+        return fetchJson('/api/auth/users/');
+    },
+    // Students
+    createStudent: async (studentData) => {
+        return fetchJson('/api/students/', {
+            method: 'POST',
+            body: JSON.stringify(studentData),
+        });
+    },
+    updateStudent: async (id, studentData) => {
+        return fetchJson(`/api/students/${id}/`, {
+            method: 'PUT',
+            body: JSON.stringify(studentData),
+        });
+    },
+    // AI Parsers & Detail Extraction
+    parseResumeWithAI: async (resumeText) => {
+        return fetchJson('/api/ai/parse-resume/', {
+            method: 'POST',
+            body: JSON.stringify({ resume_text: resumeText }),
+        });
+    },
+    parseJobWithAI: async (jobText) => {
+        return fetchJson('/api/ai/parse-job/', {
+            method: 'POST',
+            body: JSON.stringify({ job_text: jobText }),
+        });
+    },
+    createJob: async (jobData) => {
+        return fetchJson('/api/jobs/', {
+            method: 'POST',
+            body: JSON.stringify(jobData),
         });
     },
     // Students
